@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+motor
+asyncpg
+sqlalchemy
+python-dotenv
