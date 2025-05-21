@@ -4,3 +4,6 @@ motor
 asyncpg
 sqlalchemy
 python-dotenv
+python-jose
+passlib[bcrypt]
+python-multipart

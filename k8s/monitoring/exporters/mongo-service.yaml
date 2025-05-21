@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-cluster-exporter
+spec:
+  selector:
+    app: mongodb-cluster-exporter
+  ports:
+  - port: 9216
+    targetPort: 9216

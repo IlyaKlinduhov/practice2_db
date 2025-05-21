@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: add-shards
+spec:
+  template:
+    spec:
+      containers:
+        - name: add-shards
+          image: mongo:8
+          command: ["bash", "-c"]
+          args:
+            - |
+              mongosh --host mongos.default.svc.cluster.local:27017 -u $MONGO_INITDB_ROOT_USERNAME -p $MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin <<EOF
+              sh.addShard("rs0/mongo-0.mongo:27017,mongo-1.mongo:27017,mongo-2.mongo:27017")
+              sh.addShard("rs1/mongo-shard1-0.mongo-shard1:27018,mongo-shard1-1.mongo-shard1:27018,mongo-shard1-2.mongo-shard1:27018")
+              sh.status()
+              EOF
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_INITDB_ROOT_USERNAME
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_INITDB_ROOT_PASSWORD
+      restartPolicy: OnFailure

@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-shard1-setup
+spec:
+  template:
+    spec:
+      containers:
+        - name: mongo-setup
+          image: mongo:8
+          command: ["bash", "-c"]
+          args:
+            - |
+              sleep 5;
+              mongosh 'mongodb://mongo-shard1-0.mongo-shard1:27018' -u $MONGO_INITDB_ROOT_USERNAME -p $MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin --eval '
+                try {
+                  rs.status();
+                  print("Replica set already initialized");
+                } catch (e) {
+                  if (e.codeName === "NotYetInitialized") {
+                    rs.initiate({
+                      _id: "rs1",
+                      members: [
+                        { _id: 0, host: "mongo-shard1-0.mongo-shard1:27018" },
+                        { _id: 1, host: "mongo-shard1-1.mongo-shard1:27018" },
+                        { _id: 2, host: "mongo-shard1-2.mongo-shard1:27018" }
+                      ]
+                    });
+                    print("Replica set initiated");
+                  } else {
+                    print("Unexpected error: " + e);
+                  }
+                }'
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_INITDB_ROOT_USERNAME
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_INITDB_ROOT_PASSWORD
+      restartPolicy: OnFailure

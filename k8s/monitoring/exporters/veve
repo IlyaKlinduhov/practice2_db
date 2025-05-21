@@ -1,0 +1,10 @@
+db.createUser({
+  user: "exporter",
+  pwd: "password",
+  roles: [ { role: "clusterMonitor", db: "admin" } ]
+})
+
+
+2583
+
+12011

@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-sharding-setup
+spec:
+  template:
+    spec:
+      containers:
+        - name: mongo-setup
+          image: mongo:8
+          command: ["bash", "-c"]
+          args:
+            - |
+              sleep 10;
+              mongosh 'mongodb://mongos.default.svc.cluster.local:27017' -u $MONGO_INITDB_ROOT_USERNAME -p $MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin --eval '
+                sh.addShard("rs0/mongo-0.mongo:27017");
+                sh.addShard("rs1/mongo-shard1-0.mongo-shard1:27017");
+                print("Shards added successfully");'
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_INITDB_ROOT_USERNAME
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_INITDB_ROOT_PASSWORD
+      restartPolicy: OnFailure

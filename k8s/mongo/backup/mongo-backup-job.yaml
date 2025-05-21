@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongo-backup
+spec:
+  schedule: "0 3 * * *"  # каждый день в 03:00
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: mongo-backup
+              image: mongo:8
+              command: ["bash", "-c"]
+              args:
+                - |
+                  BACKUP_DIR=/backup/$(date +%F-%H-%M)
+                  mkdir -p "$BACKUP_DIR"
+                  mongodump --host mongos.default.svc.cluster.local:27017 \
+                            -u "$MONGO_INITDB_ROOT_USERNAME" \
+                            -p "$MONGO_INITDB_ROOT_PASSWORD" \
+                            --authenticationDatabase admin \
+                            --db admin_pr \
+                            --out="$BACKUP_DIR"
+                  echo "Backup saved to $BACKUP_DIR"
+              env:
+                - name: MONGO_INITDB_ROOT_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: MONGO_INITDB_ROOT_USERNAME
+                - name: MONGO_INITDB_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: MONGO_INITDB_ROOT_PASSWORD
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: mongo-backup-pvc

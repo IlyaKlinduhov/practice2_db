@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      # Мониторинг MongoDB Cluster
+      - job_name: 'mongodb-cluster'
+        static_configs:
+          - targets: ['mongodb-cluster-exporter:9216']
+
+      # Существующий мониторинг Postgres (оставляем без изменений)
+      - job_name: 'postgres'
+        static_configs:
+          - targets: ['postgres-exporter:9187']

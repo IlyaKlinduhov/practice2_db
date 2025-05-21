@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: "postgres"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      initContainers:
+        - name: clone-primary
+          image: postgres:13
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              if [ "$(hostname)" != "postgres-0" ]; then
+                rm -rf /var/lib/postgresql/data/*
+                until pg_basebackup -h postgres-0.postgres -D /var/lib/postgresql/data -U "$POSTGRES_USER" -vP -W; do
+                  echo "Waiting for primary..."
+                  sleep 5
+                done
+                touch /var/lib/postgresql/data/standby.signal
+                echo "primary_conninfo = 'host=postgres-0.postgres user=$POSTGRES_USER password=$POSTGRES_PASSWORD'" >> /var/lib/postgresql/data/postgresql.conf
+              fi
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      containers:
+        - name: postgres
+          image: postgres:13
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: custom-config
+              mountPath: /docker-entrypoint-initdb.d/
+      volumes:
+        - name: custom-config
+          configMap:
+            name: postgres-init
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

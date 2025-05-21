@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: app
+          image: localhost:5000/app:v2 
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MONGO_HOST
+              value: mongos
+            - name: MONGO_PORT
+              value: "27017"
+            - name: MONGO_DB
+              value: admin_pr
+            - name: POSTGRES_HOST
+              value: postgres-0.postgres
+            - name: POSTGRES_PORT
+              value: '5432'
+          envFrom:
+            - secretRef:
+                name: app-secrets

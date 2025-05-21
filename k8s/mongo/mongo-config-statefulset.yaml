@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo-config
+spec:
+  serviceName: mongo-config
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mongo-config
+  template:
+    metadata:
+      labels:
+        app: mongo-config
+    spec:
+      initContainers:
+      - name: mongo-init-keyfile
+        image: busybox
+        command: [ "sh", "-c" ]
+        args:
+          - |
+            if [ ! -f /data/db/mongo-keyfile ]; then
+              echo "$MONGO_REPLICA_SET_KEY" > /data/db/mongo-keyfile
+              chmod 400 /data/db/mongo-keyfile
+            fi
+        volumeMounts:
+          - name: mongo-data
+            mountPath: /data/db
+        env:
+          - name: MONGO_REPLICA_SET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: MONGO_REPLICA_SET_KEY
+      containers:
+      - name: mongo
+        image: mongo:8
+        command: ["bash", "-c"]
+        args:
+        - |
+          if [ ! -f /data/db/.initialized ]; then
+            echo "First-time init: launching mongod without --auth"
+
+            mongod --fork --logpath /data/db/mongod-init.log \
+              --bind_ip_all --port 27019 \
+              --configsvr --replSet configReplSet \
+              --keyFile /data/db/mongo-keyfile \
+              --dbpath /data/db
+
+            echo "Waiting for mongod to become available..."
+            until mongosh --port 27019 --eval "db.adminCommand('ping')" >/dev/null 2>&1; do sleep 1; done
+
+            if [ "$(hostname)" == "mongo-config-0" ]; then
+              echo "Initiating replica set..."
+              mongosh --port 27019 --eval "
+                try {
+                  rs.initiate({
+                    _id: 'configReplSet',
+                    configsvr: true,
+                    members: [{_id: 0, host: '$(hostname):27019'}]
+                  })
+                } catch (e) { print(e); }
+              "
+
+              echo "Waiting for PRIMARY..."
+              until mongosh --port 27019 --eval "rs.isMaster().ismaster" | grep true >/dev/null; do sleep 1; done
+            fi
+
+            echo "Creating root user..."
+            mongosh admin --port 27019 --eval "
+              db.createUser({
+                user: '$MONGO_INITDB_ROOT_USERNAME',
+                pwd: '$MONGO_INITDB_ROOT_PASSWORD',
+                roles: ['root']
+              })
+            "
+
+            echo "Shutting down temporary instance..."
+            mongosh admin --port 27019 --eval "db.shutdownServer()"
+            sleep 3
+            touch /data/db/.initialized
+          fi
+
+          echo "Starting mongod with --auth"
+          exec mongod --bind_ip_all --port 27019 \
+            --configsvr --replSet configReplSet \
+            --keyFile /data/db/mongo-keyfile \
+            --dbpath /data/db \
+            --logpath /proc/1/fd/1 --auth
+        ports:
+          - containerPort: 27019
+        env:
+          - name: MONGO_INITDB_ROOT_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: MONGO_INITDB_ROOT_USERNAME
+          - name: MONGO_INITDB_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: MONGO_INITDB_ROOT_PASSWORD
+          # - name: MONGO_REPLICA_SET_KEY
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: app-secrets
+          #       key: MONGO_REPLICA_SET_KEY
+        volumeMounts:
+          - name: mongo-data
+            mountPath: /data/db
+      
+  volumeClaimTemplates:
+    - metadata:
+        name: mongo-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi

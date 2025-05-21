@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from authorization.permissions import require_role
 from db.mongo import mongo_db
 from models.product import Product
 from bson import ObjectId
@@ -16,7 +17,10 @@ async def get_products():
     return products
 
 @router.post("/products")
-async def add_product(product: Product):
+async def add_product(
+    product: Product,
+    current_user = Depends(require_role("seller", "admin"))
+):
     try:
         product_dict = product.dict()
         product_dict["created_at"] = datetime.utcnow()
@@ -31,7 +35,10 @@ async def add_product(product: Product):
     
 
 @router.delete("/{product_id}")
-async def delete_product(product_id: str):
+async def delete_product(
+    product_id: str,
+    current_user = Depends(require_role("seller", "admin"))
+):
     result = await mongo_db.products.delete_one({"_id": ObjectId(product_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Product not found")

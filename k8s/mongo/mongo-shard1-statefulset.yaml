@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo-shard1
+spec:
+  serviceName: mongo-shard1
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mongo-shard1
+  template:
+    metadata:
+      labels:
+        app: mongo-shard1
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:8
+          command: ["bash", "-c"]
+          args:
+            - |
+              if [ ! -f /data/db/.initialized ]; then
+                mongod --fork --logpath /var/log/mongodb.log --bind_ip_all &&
+                mongosh admin --eval "db.createUser({user: '$MONGO_INITDB_ROOT_USERNAME', pwd: '$MONGO_INITDB_ROOT_PASSWORD', roles: ['root']})" &&
+                mongod --shutdown &&
+                touch /data/db/.initialized;
+              fi;
+              echo "$MONGO_REPLICA_SET_KEY" > /etc/mongo-keyfile;
+              chmod 400 /etc/mongo-keyfile;
+              exec mongod --replSet rs1 --keyFile /etc/mongo-keyfile --bind_ip_all --shardsvr;
+          ports:
+            - containerPort: 27017
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_INITDB_ROOT_USERNAME
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_INITDB_ROOT_PASSWORD
+            - name: MONGO_REPLICA_SET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_REPLICA_SET_KEY
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+  volumeClaimTemplates:
+    - metadata:
+        name: mongo-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi

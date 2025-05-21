@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+spec:
+  schedule: "0 1 * * *"  # Каждый день в 01:00
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: postgres-backup
+              image: postgres:13
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  pg_dump -h postgres-0.postgres -U $POSTGRES_USER $POSTGRES_DB > /backup/postgres_backup_$(date +\%F).sql
+              env:
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: POSTGRES_USER
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: POSTGRES_PASSWORD
+                - name: PGPASSWORD 
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: POSTGRES_PASSWORD
+                - name: POSTGRES_DB
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: POSTGRES_DB
+              volumeMounts:
+                - name: backup-volume
+                  mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: backup-volume
+              persistentVolumeClaim:
+                claimName: mongo-backup-pvc

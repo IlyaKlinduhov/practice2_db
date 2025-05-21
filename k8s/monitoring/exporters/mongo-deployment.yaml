@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb-cluster-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb-cluster-exporter
+  template:
+    metadata:
+      labels:
+        app: mongodb-cluster-exporter
+    spec:
+      containers:
+      - name: exporter
+        image: percona/mongodb_exporter:0.44.0 
+        env:
+          - name: MONGO_USERNAME
+            value: "exporter"
+          - name: MONGO_PASSWORD
+            value: "password"
+        # - name: MONGO_USERNAME
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: app-secrets
+        #       key: MONGO_INITDB_ROOT_USERNAME
+        # - name: MONGO_PASSWORD
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: app-secrets
+        #       key: MONGO_INITDB_ROOT_PASSWORD
+        args:
+          - --mongodb.uri=mongodb://$(MONGO_USERNAME):$(MONGO_PASSWORD)@mongos.default.svc.cluster.local:27017/admin?tls=false
+          - --collector.diagnosticdata
+          - --collector.replicasetstatus
+          - --collect-all  # Включает все доступные коллекторы
+          - --compatible-mode
+          # - --collector.dbstatsfreestorage  # Дополнительно собирает свободное место
+          # - --collector.collstats-enable-details  # Подробные метрики коллекций
+          # - --collector.profile-time-ts=30  # Собирает медленные запросы (>30 сек)
+          # - --discovering-mode
+          # - --log.level=debug
+          - --web.listen-address=:9216
+        ports:
+        - containerPort: 9216

@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-restore
+spec:
+  template:
+    spec:
+      containers:
+        - name: mongo-restore
+          image: mongo:8
+          command: ["bash", "-c"]
+          args:
+            - |
+              mongorestore --host mongos.default.svc.cluster.local:27017 \
+                           -u "$MONGO_INITDB_ROOT_USERNAME" \
+                           -p "$MONGO_INITDB_ROOT_PASSWORD" \
+                           --authenticationDatabase admin \
+                           /backup/2025-05-18-10-34
+              echo "Restore completed"
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_INITDB_ROOT_USERNAME
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_INITDB_ROOT_PASSWORD
+          volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+      restartPolicy: OnFailure
+      volumes:
+        - name: backup-storage
+          persistentVolumeClaim:
+            claimName: mongo-backup-pvc

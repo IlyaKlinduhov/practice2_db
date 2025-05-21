@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-restore
+spec:
+  template:
+    spec:
+      containers:
+        - name: restore
+          image: postgres:13
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Dropping all objects..." && \
+              PGPASSWORD=$PGPASSWORD psql -h postgres-0.postgres -U $POSTGRES_USER -d $POSTGRES_DB -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" && \
+              echo "Restoring backup..." && \
+              psql -h postgres-0.postgres -U $POSTGRES_USER $POSTGRES_DB < /backup/postgres_backup_2025-05-18.sql
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGPASSWORD  
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_DB
+          volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+      restartPolicy: Never
+      volumes:
+        - name: backup-storage
+          persistentVolumeClaim:
+            claimName: mongo-backup-pvc

@@ -1,0 +1,30 @@
+kubectl apply -f mongo-config-service.yaml
+kubectl apply -f mongo-config-statefulset.yaml
+kubectl apply -f mongo-config-setup-job.yaml
+
+kubectl apply -f mongo-service.yaml
+kubectl apply -f mongo-statefulset.yaml
+kubectl apply -f mongo-setup-job.yaml
+
+kubectl apply -f mongo-shard1-service.yaml
+kubectl apply -f mongo-shard1-statefulset.yaml
+kubectl apply -f mongo-shard1-setup-job.yaml
+
+
+kubectl apply -f mongos-deployment.yaml
+kubectl apply -f mongos-service.yaml
+
+kubectl apply -f mongo-sharding-setup-job.yaml
+
+
+kubectl delete sts mongo-config
+kubectl delete pvc -l app=mongo-config
+
+
+
+[direct: mongos] admin_pr> sh.enableSharding("myDatabase")
+[direct: mongos] admin_pr> db.products.createIndex({ _id: "hashed" })
+[direct: mongos] admin_pr> sh.shardCollection("admin_pr.products", { _id: "hashed" })
+
+
+kubectl create job --from=cronjob/mongo-backup mongo-backup-manual

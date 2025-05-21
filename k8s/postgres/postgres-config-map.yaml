@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  01-init.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "⏳ Running PostgreSQL replication setup..."
+
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
+      ALTER SYSTEM SET wal_level = 'replica';
+      ALTER SYSTEM SET max_wal_senders = 10;
+      ALTER SYSTEM SET hot_standby = on;
+    EOSQL
+
+    echo "host replication $POSTGRES_USER 0.0.0.0/0 md5" >> "$PGDATA/pg_hba.conf"
+
+    echo "✅ Replication setup complete."
+  02-init.sql: |
+    CREATE TABLE branches (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        location VARCHAR(255) NOT NULL
+    );
+
+    CREATE TYPE roleenum AS ENUM ('seller', 'admin');
+
+    CREATE TABLE employees (
+        id SERIAL PRIMARY KEY,
+        first_name VARCHAR NOT NULL,
+        last_name VARCHAR NOT NULL,
+        role roleenum NOT NULL,
+        hashed_password VARCHAR NOT NULL,
+        branch_id INTEGER REFERENCES branches(id)
+    );
+
+    INSERT INTO branches (name, location) VALUES
+    ('Центральный магазин', 'г. Москва, ул. Ленина, д. 1'),
+    ('Северный филиал', 'г. Санкт-Петербург, пр. Невский, д. 100'),
+    ('Южный склад', 'г. Краснодар, ул. Красная, д. 20');
+
+    INSERT INTO employees (first_name, last_name, role, branch_id, hashed_password)
+    VALUES ('Admin', 'User', 'admin', 1, '$2b$12$bCIZnP0hvlQ5OGIEnee.su5.VAiVsKwQAD4IiKlU3JIS2r.NoORp6');

@@ -1,0 +1,89 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-config-setup
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+      - name: init
+        image: mongo:8
+        command: ["bash", "-c"]
+        args:
+          - |
+            # Функция для проверки готовности ноды
+            wait_for_mongo() {
+              local host=$1
+              echo "Waiting for $host..."
+              until mongosh "mongodb://$host"  \
+                    --eval 'db.adminCommand("ping")' --quiet; do
+                sleep 5
+              done
+            }
+
+            # Ждем готовности всех нод
+            wait_for_mongo "mongo-config-0.mongo-config:27019"
+            wait_for_mongo "mongo-config-1.mongo-config:27019"
+            wait_for_mongo "mongo-config-2.mongo-config:27019"
+
+            # Основная логика инициализации
+            mongosh "mongodb://mongo-config-0.mongo-config:27019" \
+              -u $MONGO_INITDB_ROOT_USERNAME -p $MONGO_INITDB_ROOT_PASSWORD --eval '
+              try {
+                // Получаем текущий статус (если есть)
+                let currentConfig = {};
+                try {
+                  currentConfig = rs.conf();
+                } catch (e) {
+                  if (e.codeName !== "NotYetInitialized") throw e;
+                }
+
+                // Создаем новую конфигурацию
+                const newConfig = {
+                  _id: "configReplSet",
+                  configsvr: true,
+                  version: 1,
+                  members: [
+                    {_id: 0, host: "mongo-config-0.mongo-config:27019", priority: 2},
+                    {_id: 1, host: "mongo-config-1.mongo-config:27019", priority: 1},
+                    {_id: 2, host: "mongo-config-2.mongo-config:27019", priority: 1}
+                  ]
+                };
+
+                // Если репликасет не инициализирован
+                if (typeof currentConfig._id === "undefined") {
+                  print("Initializing new replica set");
+                  rs.initiate(newConfig);
+                } 
+                // Если конфигурация отличается
+                else if (JSON.stringify(currentConfig.members) !== JSON.stringify(newConfig.members)) {
+                  print("Reconfiguring replica set with force");
+                  newConfig.version = currentConfig.version + 1;
+                  rs.reconfig(newConfig, {force: true});
+                } else {
+                  print("Replica set already properly configured");
+                }
+
+                // Долгое ожидание стабилизации
+                print("Waiting 30 seconds for cluster stabilization...");
+                sleep(30000);
+                rs.status();
+
+              } catch (e) {
+                print("Fatal error during initialization: " + e);
+                exit(1);
+              }
+            '
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: MONGO_INITDB_ROOT_USERNAME
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: MONGO_INITDB_ROOT_PASSWORD
+      restartPolicy: OnFailure
